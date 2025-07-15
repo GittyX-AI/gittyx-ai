@@ -12,25 +12,39 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { GoogleGenAI } from "@google/genai";
 import { logging } from "../utils/logging";
 import { QueryClassification, ToolInput } from "./types";
 import { getTrackedFiles, tools } from "./tools";
+import { AIProvider } from "../providers/ai-provider";
+import { ProviderConfig } from "../providers/provider-factory";
 
 export class AgentRouter {
 
-    private ai: GoogleGenAI;
+    private aiProvider: AIProvider;
+    private model_name: string;
 
-    private model_name: string = "gemini-2.5-flash";
+    constructor(providerConfig: ProviderConfig, aiProvider: AIProvider) {
+        this.aiProvider = aiProvider;
 
-    constructor(apiKey: string, model_name?: string) {
-        this.ai = new GoogleGenAI({ apiKey: apiKey });
-
-        if (model_name) {
-            this.model_name = model_name;
+        if (providerConfig.model) {
+            this.model_name = providerConfig.model;
             logging(`AgentRouter - Using model: ${this.model_name}`);
         }
     }
+
+    extractJsonFromText(text: string): string | null {
+        // 1. Handle ```json ... ``` blocks (Gemini)
+        const codeBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/i);
+        if (codeBlockMatch) return codeBlockMatch[1].trim();
+
+        // 2. Handle plain JSON blocks anywhere in the text (Ollama)
+        const jsonMatch = text.match(/{[\s\S]*}/);
+        if (jsonMatch) return jsonMatch[0].trim();
+
+        // 3. Fall back
+        return null;
+    }
+
 
     async classifyQuery(query: string): Promise<QueryClassification> {
         const toolList = Object.values(tools).map(tool => `- ${tool.name}: ${tool.description}`);
@@ -57,17 +71,13 @@ Respond in JSON:
 }
     `.trim();
 
-        const response = await this.ai.models.generateContent({
+        const response = await this.aiProvider.generateContent({
             model: this.model_name,
             contents: [{ role: "user", parts: [{ text: prompt }] }]
         });
-        // const json = JSON.parse(response.text ?? '{}');
-        const rawText = await response.text || '';
-        const clean = rawText
-            .trim()
-            .replace(/^```json\s*/i, '')
-            .replace(/```$/, '')
-            .trim();
+        
+        const rawText = response.text || '';
+        const clean = this.extractJsonFromText(rawText);
         const json: QueryClassification = JSON.parse(clean);
 
         if (!["tool", "vector", "chat"].includes(json.type)) json.type = "chat";
@@ -86,7 +96,7 @@ Respond in JSON:
         const files = await getTrackedFiles();
 
         const prompt = `You are given a list of tracked files:${files.join("\n")}\n\nGiven a file path, return the absolute path to the file:\n${path}\nOnly respond with the absolute path.`;
-        const response = await this.ai.models.generateContent({
+        const response = await this.aiProvider.generateContent({
             model: this.model_name,
             contents: [{ role: "user", parts: [{ text: prompt }] }]
         })

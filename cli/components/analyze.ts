@@ -13,12 +13,13 @@
 // limitations under the License.
 
 import { startDashboard } from "./server";
-import GittyXAgent from "../agent/agent";
+import AgentGittyx from "../agent/agent";
 import { getCommitsWithDiffs } from "../utils/git";
 import VectorService from "../vectorstore/service";
 import { logging } from "../utils/logging";
 
 import dotenv from "dotenv";
+import { AIProviderFactory, ProviderConfig } from "../providers/provider-factory";
 dotenv.config({ quiet: true });
 
 const apiKey = process.env.GEMINI_API_KEY;
@@ -31,16 +32,46 @@ interface AnalyzeOptions {
   port: number;
   embedding: string;
   generation: string;
+  baseUrl?: string;
+  model?: string;
+  provider: "gemini" | "ollama" | "openai";
+
 }
 export async function analyzeRepo(options: AnalyzeOptions) {
-  if (!apiKey) {
-    throw new Error("Missing GEMINI_API_KEY");
+  if (!apiKey && options.provider === "gemini") {
+    throw new Error("Missing GEMINI_API_KEY"); 
+  }
+
+  if (options.provider === "ollama" && !options.baseUrl) {
+    throw new Error("Base URL is required for Ollama provider");
+  }
+
+  if (!apiKey && options.provider === "openai") {
+    throw new Error("Missing OPENAI_API_KEY");
   }
   console.log("\n▲ GittyX: Analyzing repository...\n");
   await getCommitsWithDiffs(options.limit);
 
-  const agent = new GittyXAgent(options.limit, apiKey, options.generation);
-  const gittyxStore = new VectorService(options.limit, apiKey, options.embedding);
+  const providerConfig: ProviderConfig = {
+    type: options.provider,
+    apiKey,
+    baseUrl: options.baseUrl,
+    model: options.model,
+    embeddingModel: options.embedding
+  };
+
+  const aiProvider = await AIProviderFactory.createProvider(providerConfig);
+
+  const agent: AgentGittyx = new AgentGittyx(
+    options.limit,
+    providerConfig,
+    aiProvider
+  );
+  const gittyxStore: VectorService = new VectorService(
+    options.limit,
+    providerConfig,
+    aiProvider
+  );
 
   await agent.summarizeCommits();
   await agent.generateOverallSummary();
@@ -49,9 +80,6 @@ export async function analyzeRepo(options: AnalyzeOptions) {
 
   await gittyxStore.ingest();
 
-  // 🧠 Add actual repo analysis logic here later...
   logging("Analysis complete.\n");
-
-  // 🚀 Launch dashboard
   await startDashboard(agent, gittyxStore, options.port, options.limit);
 }

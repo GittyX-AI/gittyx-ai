@@ -122,7 +122,7 @@ export default function ChatBox() {
   }, [currentSessionId])
 
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost:3000")
+    const ws = new WebSocket("ws://localhost:49251")
     setSocket(ws)
 
     ws.onmessage = (event) => {

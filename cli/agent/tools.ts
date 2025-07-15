@@ -94,7 +94,7 @@ export const getCommitByKeyword: Tool = {
 
 export const getCommitDetails: Tool = {
     name: 'getCommitDetails',
-    description: 'Get details of a specific commit by its hash. Args: hash',
+    description: 'Get details of a specific commit by its hash. DONT use it unless you know the exact hash from User query. Args: hash',
     async run({ hash }: ToolInput) {
         try {
             const show = await git.show([hash, '--quiet']);
@@ -218,7 +218,7 @@ export const tools: Record<string, Tool> = {
     getLastCommit,
     getFirstLastCommit,
     listContributors,
-    getCommitByKeyword,
+    // getCommitByKeyword,
     getCommitDetails,
     summarizeFileEvolution,
     getCommitStats,

@@ -11,7 +11,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:3000',  // your backend server
+      '/api': 'http://localhost:49251',  // your backend server
     },
   },
 });
