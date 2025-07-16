@@ -39,7 +39,7 @@ function parseLimit(value) {
 program
   .name("gittyx")
   .description("AI-powered CLI tool that analyzes a Git repository's history and launches a local web dashboard to visualize, explore, and query the codebase's evolution.")
-  .version("1.4.2");
+  .version("1.4.3");
 
 program
   .command("analyze")
