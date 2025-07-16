@@ -8,7 +8,7 @@
 
 **Website:** https://gittyx-ai.com
 
-![npm version](https://img.shields.io/npm/v/gittyx-ai) ![license](https://img.shields.io/github/license/GittyX-AI/gittyx-ai) ![stars](https://img.shields.io/github/stars/GittyX-AI/gittyx-ai?style=flat)  
+![npm version](https://img.shields.io/npm/v/gittyx-ai) ![license](https://img.shields.io/github/license/GittyX-AI/gittyx-ai.svg) ![stars](https://img.shields.io/github/stars/GittyX-AI/gittyx-ai?style=flat)  
 
 ## Description
 

@@ -3,7 +3,7 @@ import { LocalVectorStore, VECTOR_STORE_PATH } from "./client"
 import cliProgress from "cli-progress"
 import { logging } from "../utils/logging"
 import type { AIProvider } from "../providers/ai-provider"
-import { AIProviderFactory, type ProviderConfig } from "../providers/provider-factory"
+import type { ProviderConfig } from "../providers/provider-factory"
 
 export default class VectorService {
   private aiProvider: AIProvider
