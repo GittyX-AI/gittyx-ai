@@ -44,8 +44,10 @@ Please remember to do the following:
 - Reach out: contact@gittyx-ai.com
 
 - Ask in:
-
-     [![Discord](https://img.shields.io/discord/1394964802287304736?label=Discord&logo=discord&style=flat&color=5865F2)](https://discord.gg/VdBPGtbb)
+    
+    [![Discord](https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white
+     )
+](https://discord.gg/VdBPGtbb)
 
 
 ---
