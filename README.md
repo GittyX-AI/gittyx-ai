@@ -78,7 +78,6 @@ Options:
 | Feature                          | Soon | Future | Future+ |
 |----------------------------------|:----:|:------:|:-------:|
 | VSCode Extension              | x |  |  |
-| GitHub Integration           |  | x |  |
 | Timeline Diff Comparison     |  | x |  |
 | Team Dashboards *(online only)* |  |  | x |
 
