@@ -21,8 +21,8 @@ import { getCommits, getOverallSummary, getTimelineChartConfig } from "../utils/
 import { v4 as uuidv4 } from "uuid"
 import { getSessionFilePath, loadSessionHistory, saveSessionHistory, listSessionIds } from "../sessions/manager"
 import { asciiArtBanner, logging } from "../utils/logging"
-import AgentGittyx from "../agent/agent"
-import VectorService from "../vectorstore/service"
+import type AgentGittyx from "../agent/agent"
+import type VectorService from "../vectorstore/service"
 
 export async function startDashboard(agent: AgentGittyx, gittyxStore: VectorService, port: number, limit: number) {
   const app = express()
@@ -147,12 +147,13 @@ export async function startDashboard(agent: AgentGittyx, gittyxStore: VectorServ
       try {
         const data = JSON.parse(msg.toString())
 
-        // If client sends a sessionId, use it, otherwise create a new one
-        if (data.sessionId) {
+        if (data.sessionId === null) {
+          sessionId = uuidv4()
+          ws.send(JSON.stringify({ type: "session", sessionId }))
+        } else if (data.sessionId) {
           sessionId = data.sessionId
         } else if (!sessionId) {
           sessionId = uuidv4()
-          // Send the new sessionId back to client
           ws.send(JSON.stringify({ type: "session", sessionId }))
         }
 
@@ -197,6 +198,5 @@ export async function startDashboard(agent: AgentGittyx, gittyxStore: VectorServ
 
   server.listen(port, () => {
     asciiArtBanner(port)
-  });
-
+  })
 }
