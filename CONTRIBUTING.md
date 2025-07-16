@@ -8,8 +8,14 @@ Thanks for your interest in contributing to GittyX AI!
 2. Clone your fork (`git clone https://github.com/GittyX-AI/gittyx-ai.git`)
 3. Create a new branch (`git checkout -b feature/my-feature`)
 4. Make your changes
-5. Commit and push (`git commit -m "Add my feature"` → `git push origin feature/my-feature`)
-6. Open a pull request
+5. Message commit guide:
+    > please use these tags for your commit messages: 
+    - `[ADD]`: when adding new feature or new docs, ...
+    - `[UPDATE]`: when updating, refactoring existing code.
+    - `[REMOVE]`: deleting a file, a code section, unused code.
+    - `[FIX]`: when fixing a bug or a typo, ...
+6. Commit and push (`git commit -m "[ADD] my feature"` → `git push origin feature/my-feature`)
+7. Open a pull request
 
 ## Guidelines
 
@@ -35,9 +41,11 @@ Please remember to do the following:
 
 - Open an [issue](https://github.com/GittyX-AI/gittyx-ai/issues)
 
-or
+- Reach out: contact@gittyx-ai.com
 
-- ask in [![Discord](https://img.shields.io/discord/1394964802287304736?label=Discord&logo=discord&style=flat&color=5865F2)](https://discord.gg/VdBPGtbb)
+- Ask in:
+
+     [![Discord](https://img.shields.io/discord/1394964802287304736?label=Discord&logo=discord&style=flat&color=5865F2)](https://discord.gg/VdBPGtbb)
 
 
 ---
