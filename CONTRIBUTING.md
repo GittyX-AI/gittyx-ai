@@ -26,7 +26,7 @@ Thanks for your interest in contributing to GittyX AI!
 
 ## Code of Conduct
 
-This project adheres to a [Code of Conduct](CODE_OF_CONDUCT.md).  
+This project adheres to a [Code of Conduct](https://github.com/GittyX-AI/gittyx-ai/wiki/Code-of-Conduct).  
 By participating, you are expected to uphold this code.
 
 ## Issues
