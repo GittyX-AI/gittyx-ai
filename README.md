@@ -92,6 +92,5 @@ We welcome contributions! Check out our [Contribution Guide](https://github.com/
 
 Licensed under the [Apache-2.0 License](https://github.com/GittyX-AI/gittyx-ai/blob/main/LICENSE)
 
----
 > Developed by [Mohammed TATI](https://github.com/tatimohammed)\
 > Made for developers, by a developer
