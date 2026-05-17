@@ -15,20 +15,12 @@
 // limitations under the License.
 
 import { Command } from "commander";
-import inquirer from 'inquirer';
 import { analyzeRepo } from "./components/analyze";
+import { loadConfig, editConfig } from "./components/config";
 
 const program = new Command();
 
-// function parsePort(value) {
-//   const port = parseInt(value, 10);
-//   if (isNaN(port)) {
-//     throw new Error("Invalid port number. Must be an integer.");
-//   }
-//   return port;
-// }
-
-function parseLimit(value) {
+function parseLimit(value: string ): number {
   const limit = parseInt(value, 10);
   if (isNaN(limit)) {
     throw new Error("Invalid limit number. Must be an integer.");
@@ -44,107 +36,56 @@ program
 program
   .command("analyze")
   .description("Analyze repository and start dashboard")
-  .option("-l, --limit <number>", "The number of the most recent commits to analyze", parseLimit, 200)
-  // .option("-d, --date <date>", "The date to start analyzing commits from (YYYY-MM-DD)")
-  .option("-m, --mode <string>", "GittyX mode: online (gemini or openai) or local (ollama)", "online")
+  .option("-l, --limit <number>", "Number of commits", parseLimit, 200)
+  .option("-m, --mode <string>", "Mode override: online or local")
   .action(async (options) => {
-    if (options.limit && options.date) {
-      console.error("Error: You cannot use both --limit and --date at the same time. Please use only one.");
-      process.exit(1);
-    }
-
-    if (options.mode !== "online" && options.mode !== "local") {
-      console.error("Error: Invalid mode. Please use 'online' or 'local'.");
-      process.exit(1);
-    }
-
-    if (options.limit && options.limit < 1) {
+    if (options.limit < 1) {
       console.error("Error: --limit must be a positive number.");
       process.exit(1);
     }
 
-    if (options.date && !/^\d{4}-\d{2}-\d{2}$/.test(options.date)) {
-      console.error("Error: Invalid date format. Please use YYYY-MM-DD.");
-      process.exit(1);
-    }
+    const config = await loadConfig();
 
-    if (options.mode === "online") {
-      // Show a selector for gemini or openai
-      const { provider } = await inquirer.prompt({
-        type: "list",
-        name: "provider",
-        message: "Choose your AI provider:",
-        choices: [
-          { name: "gemini", value: "gemini" },
-          { name: "openai", value: "openai" }
-        ]
-      });
-
-      const { model } = await inquirer.prompt({
-        type: "list",
-        name: "model",
-        message: "Choose your Generation model:",
-        choices: provider === "gemini"
-          ? ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash", "gemini-1.5-pro"] : ["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"]
-      })
-
-      const { embedding } = await inquirer.prompt({
-        type: "list",
-        name: "embedding",
-        message: "Choose your Embedding model:",
-        choices: provider === "gemini"
-          ? ["text-embedding-004", "embedding-001"] : ["text-embedding-ada-002", "text-embedding-3-large", "text-embedding-3-small"]
-      })
-
-      options.provider = provider;
-      options.embedding = embedding;
-      options.model = model;
-    } else if (options.mode === "local") {
-      // Show a selector for ollama or huggingface
-      const { provider } = await inquirer.prompt({
-        type: "list",
-        name: "provider",
-        message: "Choose your AI provider:",
-        choices: [
-          { name: "ollama", value: "ollama" },
-          { name: "huggingface", value: "huggingface", disabled: "(coming soon...)" }
-        ]
-      });
-
-      const { baseUrl } = await inquirer.prompt({
-        type: "input",
-        name: "baseUrl",
-        message: `Enter the base URL for ${provider}:`,
-        default: provider === "ollama" ? "http://localhost:11434" : ""
-      });
-
-      const { model } = await inquirer.prompt({
-        type: "input",
-        name: "model",
-        message: `Enter the model name for ${provider}:`,
-        default: provider === "ollama" ? "deepseek-r1:8b" : ""
-      });
-
-      const { embedding } = await inquirer.prompt({
-        type: "input",
-        name: "embedding",
-        message: `Enter the embedding model name for ${provider}:`,
-        default: provider === "ollama" ? "nomic-embed-text:v1.5" : ""
-      });
-
-      if (!baseUrl || !model || !embedding) {
-        console.error("Error: Base URL, model, and embedding model are required for local mode.");
+    /**
+     * Optional CLI overrides
+     */
+    if (options.mode) {
+      if (options.mode !== "online" && options.mode !== "local") {
+        console.error("Error: mode must be 'online' or 'local'");
         process.exit(1);
       }
-      options.provider = provider;
-      options.embedding = embedding;
-      options.baseUrl = baseUrl;
-      options.model = model;
+
+      config.analyze.defaults.mode = options.mode;
     }
 
-    
-    options.port = 49251;
-    await analyzeRepo(options);
+    if (options.limit) {
+      config.analyze.defaults.limit = options.limit;
+    }
+
+    /**
+     * Inject config into analyze options
+     */
+    await analyzeRepo({
+      limit: config.analyze.defaults.limit,
+      mode: config.analyze.defaults.mode,
+      online: config.analyze.defaults.online,
+      local: config.analyze.defaults.local,
+      port: config.analyze.defaults.port,
+    });
+  });
+
+program
+  .command("config")
+  .description("Configure GittyX")
+  .option("--show", "Show resolved config")
+  .action(async (options) => {
+    const config = await loadConfig();
+    if (options.show) {
+      console.log(JSON.stringify(config, null, 2));
+      return;
+    }
+
+    await editConfig();
   });
 
 program.parse();

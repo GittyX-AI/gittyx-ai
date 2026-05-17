@@ -24,3 +24,5 @@ dist-node
 *.njsproj
 *.sln
 *.sw?
+
+gittyx.config.json
