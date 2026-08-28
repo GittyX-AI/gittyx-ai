@@ -1,10 +1,13 @@
 import { getCommits } from "../utils/insight"
 import { LocalVectorStore, VECTOR_STORE_PATH } from "./client"
-import cliProgress from "cli-progress"
-import { logging } from "../utils/logging"
+import { output } from "../utils/output"
 import type { AIProvider } from "../providers/ai-provider"
 import type { ProviderConfig } from "../providers/provider-factory"
 
+/**
+ * Vector service for ingesting and searching commit embeddings
+ * Uses semantic search to find relevant commits based on queries
+ */
 export default class VectorService {
   private aiProvider: AIProvider
   private model_name: string
@@ -17,17 +20,27 @@ export default class VectorService {
     this.limit = limit
     this.vectorStore = new LocalVectorStore(this.model_name)
 
-    logging(`Using provider: ${providerConfig.type} with embedding model: ${this.model_name}`)
+    output.debug(`Using provider: ${providerConfig.type} with embedding model: ${this.model_name}`)
   }
 
+  /**
+   * Get embedding for a single text
+   */
   async getEmbedding(text: string): Promise<number[]> {
     return await this.aiProvider.getEmbedding(this.model_name, text)
   }
 
+  /**
+   * Get embeddings for multiple texts (batch operation)
+   */
   async getEmbeddings(texts: string[]): Promise<number[][]> {
     return await this.aiProvider.getEmbeddings(this.model_name, texts)
   }
 
+  /**
+   * Split text into chunks of specified line count
+   * Prevents extremely large text inputs to embeddings
+   */
   chunkText(text: string, maxLines = 100): string[] {
     const lines = text.split("\n")
     const chunks: string[] = []
@@ -48,46 +61,49 @@ export default class VectorService {
     return chunks
   }
 
+  /**
+   * Ingest all commits into the vector store
+   * Chunks diffs and creates embeddings for semantic search
+   */
   async ingest(batchSize = 16) {
-    logging("Ingesting commits...")
+    output.debug("Ingesting commits into vector store...")
     const commits = getCommits(this.limit)
     const existingIds = new Set(this.vectorStore.getAllIds())
 
-    const multibar = new cliProgress.MultiBar(
-      {
-        clearOnComplete: false,
-        hideCursor: true,
-        format: "{bar} {percentage}% | {value}/{total} {label}",
-        barCompleteChar: "█",
-        barIncompleteChar: "░",
-      },
-      cliProgress.Presets.shades_classic,
-    )
+    let processedCount = 0;
+    const totalChunks = commits.reduce((acc, commit) => {
+      const chunks = this.chunkText(commit.diff || "");
+      return acc + chunks.length;
+    }, 0);
 
-    const mainBar = multibar.create(commits.length, 0, { label: "commits" })
+    output.debug(`Processing ${commits.length} commits with ${totalChunks} total chunks`);
 
     for (const commit of commits) {
       const { hash, message, summary, diff, author, date } = commit
+      // Create base document with commit metadata
       const baseDoc = `Commit: ${hash}
 Author: ${author}
 Date: ${date}
 Message: ${message}
 Summary: ${summary ?? ""}`.trim()
 
+      // Split diff into manageable chunks
       const diffChunks = this.chunkText(diff || "")
-      const chunkBar = multibar.create(diffChunks.length, 0, { label: `${hash.slice(0, 7)}` })
 
       const chunkContents: string[] = []
       const chunkIds: string[] = []
       const chunkMetas: any[] = []
 
+      // Process each chunk of the diff
       for (let i = 0; i < diffChunks.length; i++) {
         const chunkId = `${hash}_chunk_${i}`
+        // Skip already-ingested chunks
         if (existingIds.has(chunkId)) {
-          chunkBar.increment()
+          processedCount++;
           continue
         }
 
+        // Combine base doc with diff chunk
         const chunkContent = `${baseDoc}\n\nDiff Chunk:\n${diffChunks[i]}`
         chunkContents.push(chunkContent)
         chunkIds.push(chunkId)
@@ -101,40 +117,43 @@ Summary: ${summary ?? ""}`.trim()
           text: chunkContent,
         })
 
+        // Check if batch is full or if this is the last chunk
         const isBatchFull = chunkContents.length >= batchSize
-        const isLast = i === diffChunks.length - 1
+        const isLastChunk = i === diffChunks.length - 1
 
-        if (isBatchFull || isLast) {
+        // Process batch when full or at end
+        if (isBatchFull || isLastChunk) {
           try {
+            // Generate embeddings for the batch
             const embeddings = await this.getEmbeddings(chunkContents)
             for (let j = 0; j < embeddings.length; j++) {
               this.vectorStore.addVector(chunkIds[j], embeddings[j], chunkContents[j], chunkMetas[j])
-              chunkBar.increment()
+              processedCount++;
             }
+            output.debug(`Processed ${processedCount}/${totalChunks} chunks`);
           } catch (err) {
-            logging(`Failed to embed batch for commit ${hash}: ${err}`, "error")
-            // Skip failed chunks and continue
+            output.warn(`Failed to embed batch for commit ${hash.slice(0, 7)}: ${err}`)
+            // Skip failed chunks and continue with next batch
             for (let j = 0; j < chunkContents.length; j++) {
-              chunkBar.increment()
+              processedCount++;
             }
           }
 
+          // Reset batch arrays
           chunkContents.length = 0
           chunkIds.length = 0
           chunkMetas.length = 0
         }
       }
-
-      // Remove sub-bar once done
-      multibar.remove(chunkBar)
-      mainBar.increment()
     }
 
-    mainBar.stop()
-    multibar.stop()
-    logging(`Ingestion complete. Stored in ${VECTOR_STORE_PATH}`)
+    output.debug(`Ingestion complete. Stored in ${VECTOR_STORE_PATH}`)
   }
 
+  /**
+   * Query the vector store for semantically similar commits
+   * Returns top K results ranked by similarity
+   */
   async query(text: string, topK = 5) {
     const embedding = await this.getEmbedding(text)
     const results = this.vectorStore.search(embedding, topK)

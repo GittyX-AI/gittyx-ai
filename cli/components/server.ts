@@ -20,15 +20,20 @@ import { WebSocketServer } from "ws"
 import { getCommits, getOverallSummary, getTimelineChartConfig } from "../utils/insight"
 import { v4 as uuidv4 } from "uuid"
 import { getSessionFilePath, loadSessionHistory, saveSessionHistory, listSessionIds } from "../sessions/manager"
-import { asciiArtBanner, logging } from "../utils/logging"
+import { output } from "../utils/output"
 import type AgentGittyx from "../agent/agent"
 import type VectorService from "../vectorstore/service"
 
-export async function startDashboard(agent: AgentGittyx, gittyxStore: VectorService, port: number, limit: number) {
+export async function startDashboard(
+  agent: AgentGittyx,
+  gittyxStore: VectorService,
+  port: number, 
+  limit: number,
+  verbose: boolean) {
   const app = express()
   const dashboardDist = path.resolve(__dirname, "../..")
 
-  logging(`Production mode: serving built dashboard from: ${dashboardDist}`)
+  output.debug(`Production mode: serving built dashboard from: ${dashboardDist}`)
 
   app.use(express.static(dashboardDist))
   app.use(express.json()) // Add JSON parsing middleware
@@ -43,7 +48,7 @@ export async function startDashboard(agent: AgentGittyx, gittyxStore: VectorServ
       }
       res.json(data)
     } catch (error) {
-      logging(`API error: ${error}`, "error")
+      output.error(`API error: ${error}`)
       res.status(500).json({ error: "Failed to load insights" })
     }
   })
@@ -79,7 +84,7 @@ export async function startDashboard(agent: AgentGittyx, gittyxStore: VectorServ
 
       res.json(sessions)
     } catch (error) {
-      logging(`Failed to load sessions: ${error}`, "error")
+      output.error(`Failed to load sessions: ${error}`)
       res.status(500).json({ error: "Failed to load sessions" })
     }
   })
@@ -99,7 +104,7 @@ export async function startDashboard(agent: AgentGittyx, gittyxStore: VectorServ
 
       res.json({ messages })
     } catch (error) {
-      logging(`Failed to load session: ${error}`, "error")
+      output.error(`Failed to load session: ${error}`)
       res.status(500).json({ error: "Failed to load session" })
     }
   })
@@ -116,7 +121,7 @@ export async function startDashboard(agent: AgentGittyx, gittyxStore: VectorServ
         res.status(404).json({ error: "Session not found" })
       }
     } catch (error) {
-      logging(`Failed to delete session: ${error}`, "error")
+      output.error(`Failed to delete session: ${error}`)
       res.status(500).json({ error: "Failed to delete session" })
     }
   })
@@ -128,7 +133,7 @@ export async function startDashboard(agent: AgentGittyx, gittyxStore: VectorServ
       res.sendFile(indexFile)
     })
   } else {
-    logging("index.html not found in dist folder.", "error")
+    output.error("index.html not found in dist folder.")
   }
 
   // Wrap express app in a raw HTTP server for WebSocket support
@@ -138,7 +143,7 @@ export async function startDashboard(agent: AgentGittyx, gittyxStore: VectorServ
   const wss = new WebSocketServer({ server })
 
   wss.on("connection", (ws) => {
-    logging("WebSocket client connected")
+    output.debug("WebSocket client connected")
 
     // Store sessionId per connection
     let sessionId: string | null = null
@@ -186,17 +191,17 @@ export async function startDashboard(agent: AgentGittyx, gittyxStore: VectorServ
 
         ws.send(JSON.stringify({ type: "done" }))
       } catch (err) {
-        logging(`WebSocket chat error: ${err}`, "error")
+        output.error(`WebSocket chat error: ${err}`)
         ws.send(JSON.stringify({ type: "error", error: "Internal error" }))
       }
     })
 
     ws.on("close", () => {
-      logging("WebSocket client disconnected")
+      output.debug("WebSocket client disconnected")
     })
   })
 
   server.listen(port, () => {
-    asciiArtBanner(port)
+    output.showBanner(port)
   })
 }

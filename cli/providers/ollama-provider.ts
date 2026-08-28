@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { logging } from "../utils/logging"
+import { output } from "../utils/output"
 import { AIProvider, type GenerateContentOptions, type GenerateContentResponse } from "./ai-provider"
 
 interface OllamaMessage {
@@ -98,7 +98,7 @@ export class OllamaProvider extends AIProvider {
         stream: true,
       }
 
-      logging(`Ollama request: ${JSON.stringify(request)}`, "debug")
+      output.debug(`Ollama request: ${JSON.stringify(request)}`)
 
       const response = await fetch(`${this.baseUrl}/api/chat`, {
         method: "POST",

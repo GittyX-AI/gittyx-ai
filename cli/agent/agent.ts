@@ -14,10 +14,9 @@
 
 import path from "path"
 import fs from "fs"
-import cliProgress from "cli-progress"
 import type VectorService from "../vectorstore/service"
 import { loadSessionHistory, saveSessionHistory } from "../sessions/manager"
-import { logging } from "../utils/logging"
+import { output } from "../utils/output"
 import { tools } from "./tools"
 import { AgentRouter } from "./router"
 import type { AIProvider, GenerateContentOptions } from "../providers/ai-provider"
@@ -33,25 +32,32 @@ export default class AgentGittyx {
   private limit: number
   private router: AgentRouter
 
-constructor(limit: number, providerConfig: ProviderConfig, aiProvider: AIProvider) {
-    // Create AI provider based on config
-    logging(`Initializing GittyX Agent with limit: ${limit} and provider: ${providerConfig.type}`)
+  constructor(limit: number, providerConfig: ProviderConfig, aiProvider: AIProvider) {
+    // Initialize GittyX Agent with specified commit limit and AI provider
+    output.debug(`Initializing GittyX Agent with limit: ${limit} and provider: ${providerConfig.type}`)
     this.model_name = providerConfig.model
     this.limit = limit
     this.aiProvider = aiProvider
     
-    logging(`Setting commit limit to: ${this.limit}`)
-    logging(`Using provider: ${providerConfig.type} with model: ${this.model_name}`)
+    output.debug(`Setting commit limit to: ${this.limit}`)
+    output.debug(`Using provider: ${providerConfig.type} with model: ${this.model_name}`)
 
-    // Initialize router with the same provider config
+    // Initialize router with the same provider config for delegating queries
     this.router = new AgentRouter(providerConfig, this.aiProvider)
   }
 
+  /**
+   * Determines if a commit is trivial (typos, readme changes, version bumps, etc.)
+   * These commits are skipped during analysis to focus on significant changes
+   */
   private isTrivialCommit(message: string): boolean {
     const trivialPatterns = [/typo/i, /readme/i, /bump/i, /version/i, /merge/i]
     return trivialPatterns.some((p) => p.test(message))
   }
 
+  /**
+   * Splits commits into batches for efficient processing
+   */
   private batchCommits(commits: any[]) {
     const batches: any[][] = []
     for (let i = 0; i < commits.length; i += this.BATCH_SIZE) {
@@ -60,6 +66,10 @@ constructor(limit: number, providerConfig: ProviderConfig, aiProvider: AIProvide
     return batches
   }
 
+  /**
+   * Loads cached commits from .git/gittyx.json
+   * Returns empty array if file doesn't exist or is malformed
+   */
   private loadCache(): any[] {
     if (!fs.existsSync(this.cachePath)) return []
     const raw = fs.readFileSync(this.cachePath, "utf-8")
@@ -67,11 +77,14 @@ constructor(limit: number, providerConfig: ProviderConfig, aiProvider: AIProvide
       const parsed = JSON.parse(raw)
       return Array.isArray(parsed) ? parsed : []
     } catch (e) {
-      logging(`Could not parse cache file: ${e}`, "warn")
+      output.warn(`Could not parse cache file: ${e}`)
       return []
     }
   }
 
+  /**
+   * Creates a structured prompt for batch commit summarization
+   */
   private createBatchPrompt(batch: any[]): string {
     return (
       `You are an AI agent analyzing Git commits.\n` +
@@ -83,6 +96,9 @@ constructor(limit: number, providerConfig: ProviderConfig, aiProvider: AIProvide
     )
   }
 
+  /**
+   * Truncates diff output to prevent extremely large prompts
+   */
   private truncateDiff(diff: string): string {
     const lines = diff.split("\n")
     return lines.length > this.MAX_DIFF_LINES
@@ -90,27 +106,27 @@ constructor(limit: number, providerConfig: ProviderConfig, aiProvider: AIProvide
       : diff
   }
 
+  /**
+   * Analyzes and summarizes individual commits using the AI provider
+   * Skips trivial commits and already-summarized commits
+   * Uses batch processing for efficiency
+   */
   async summarizeCommits() {
     this.cache = this.loadCache()
+    // Filter to only unsummarized non-trivial commits
     const toSummarize = this.cache.filter((c) => !c.summary && !this.isTrivialCommit(c.message))
 
     if (toSummarize.length === 0) {
-      logging("All commits already summarized.")
+      output.debug("All commits already summarized.")
       return
     }
 
     const batches = this.batchCommits(toSummarize)
+    output.debug(`Processing ${toSummarize.length} commits in ${batches.length} batches`)
 
-    // Create progress bar
-    const bar = new cliProgress.SingleBar({
-      format: "Summarizing [{bar}] {percentage}% | {value}/{total} batches",
-      barCompleteChar: "█",
-      barIncompleteChar: "░",
-      hideCursor: true,
-    })
-    bar.start(batches.length, 0)
-
-    for (const batch of batches) {
+    // Process each batch sequentially
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i]
       const prompt = this.createBatchPrompt(batch)
 
       try {
@@ -122,6 +138,7 @@ constructor(limit: number, providerConfig: ProviderConfig, aiProvider: AIProvide
         const response = await this.aiProvider.generateContent(options)
         const rawText = response.text || ""
 
+        // Parse JSON response, handling code block wrappers
         const clean = rawText
           .trim()
           .replace(/^```json\s*/i, "")
@@ -130,50 +147,54 @@ constructor(limit: number, providerConfig: ProviderConfig, aiProvider: AIProvide
 
         const parsed: Record<string, string> = JSON.parse(clean)
 
+        // Update cache with summaries
         for (const [hash, summary] of Object.entries(parsed)) {
           const entry = this.cache.find((c) => c.hash === hash)
           if (entry) entry.summary = summary
         }
-      } catch (err) {
-        logging(`Failed to summarize a batch: ${err}`, "warn")
-      }
 
-      bar.increment()
+        output.debug(`Batch ${i + 1}/${batches.length} complete`)
+      } catch (err) {
+        output.warn(`Failed to summarize batch ${i + 1}: ${err}`)
+      }
     }
 
-    bar.stop()
     fs.writeFileSync(this.cachePath, JSON.stringify(this.cache, null, 2))
-    logging(`Summarization complete. Updated ${this.cachePath}`)
+    output.debug(`Summarization complete. Updated ${this.cachePath}`)
   }
 
+  /**
+   * Generates a high-level summary of the entire repository's evolution
+   * Based on individual commit summaries
+   */
   async generateOverallSummary() {
-    logging("Generating overall summary...")
+    output.debug("Generating overall repository summary...")
     this.cache = this.loadCache()
+    // Get all non-meta commits with summaries
     let nonOverallCommits = this.cache.filter((c) => c.hash !== "__overall__" && c.hash !== "__chart__" && c.summary)
 
-    // sort by date descending
-    // if limit is specified, return only the latest commits
+    // Sort by date descending and limit to requested number
     if (this.limit && this.limit > 0) {
       const sortedCommits = nonOverallCommits.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       nonOverallCommits = sortedCommits.slice(0, this.limit)
     }
 
     if (nonOverallCommits.length === 0) {
-      logging("No summaries to generate an overall summary from.")
+      output.debug("No summaries to generate an overall summary from.")
       return
     }
 
-    // Get most recent commit date
+    // Get most recent commit date to check if summary is stale
     const latestCommitDate = new Date(Math.max(...nonOverallCommits.map((c) => new Date(c.date).getTime())))
 
-    // Check for existing __overall__ summary and compare date with latest commit number
+    // Check for existing __overall__ summary and skip if up-to-date
     const overall = this.cache.find((c) => c.hash === "__overall__")
     if (
       overall &&
       new Date(overall.date).getTime() >= latestCommitDate.getTime() &&
       overall.numberOfCommits === this.limit
     ) {
-      logging("Skipping summary: no new commits since last summary.")
+      output.debug("Skipping summary: no new commits since last summary.")
       return
     }
 
@@ -189,6 +210,7 @@ constructor(limit: number, providerConfig: ProviderConfig, aiProvider: AIProvide
       const response = await this.aiProvider.generateContent(options)
       const text = response.text || ""
 
+      // Parse response, removing markdown code blocks if present
       const clean = text
         .trim()
         .replace(/^```(?:markdown)?\s*/i, "")
@@ -197,6 +219,7 @@ constructor(limit: number, providerConfig: ProviderConfig, aiProvider: AIProvide
 
       const now = new Date().toISOString()
       if (overall) {
+        // Update existing overall summary
         overall.summary = clean
         overall.date = now
         overall.numberOfCommits = this.limit
@@ -212,19 +235,22 @@ constructor(limit: number, providerConfig: ProviderConfig, aiProvider: AIProvide
       }
 
       fs.writeFileSync(this.cachePath, JSON.stringify(this.cache, null, 2))
-      logging("Overall summary updated.")
+      output.debug("Overall summary updated.")
     } catch (err) {
-      logging(`Failed to generate overall summary: ${err}`, "error")
+      output.error(`Failed to generate overall summary: ${err}`)
     }
   }
 
+  /**
+   * Generates timeline chart configuration for visualizing commit history
+   * Groups commits by date and creates chart.js compatible config
+   */
   getTimelineChartConfig(): any {
     this.cache = this.loadCache()
-    // Filter relevant commits (exclude __overall__ and __chart__)
+    // Filter commits excluding meta entries (__overall__, __chart__)
     let filtered = this.cache.filter((c) => c.hash !== "__overall__" && c.hash !== "__chart__" && c.date)
 
-    // sort commits by date descending
-    // if limit is specified, return only the latest commits
+    // Sort commits by date descending and limit to requested number
     if (this.limit && this.limit > 0) {
       const sortedCommits = filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       filtered = sortedCommits.slice(0, this.limit)
@@ -238,16 +264,16 @@ constructor(limit: number, providerConfig: ProviderConfig, aiProvider: AIProvide
       commitsByDate[dateKey].push(c)
     })
 
-    // Sort dates ascending
+    // Sort dates ascending for timeline display
     const sortedDates = Object.keys(commitsByDate).sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
 
     // Prepare labels and data (number of commits per day)
     const labels = sortedDates.map((date) => new Date(date).toLocaleDateString())
     const commitsCount = sortedDates.map((date) => commitsByDate[date].length)
 
-    // Optional: Prepare summaries for tooltips (show commits messages on that day)
+    // Prepare summaries for tooltips (show commit messages on that day)
     const summaries = sortedDates.map((date) => {
-      return commitsByDate[date].map((c) => c.summary || c.message || "").join("\n\n") // Join multiple commits summaries per day
+      return commitsByDate[date].map((c) => c.summary || c.message || "").join("\n\n")
     })
 
     const chartConfig = {
@@ -304,7 +330,7 @@ constructor(limit: number, providerConfig: ProviderConfig, aiProvider: AIProvide
       },
     }
 
-    // Save chart config to cache under special hash (same as before)
+    // Save chart config to cache under special __chart__ meta entry
     const now = new Date().toISOString()
     const chartEntry = {
       hash: "__chart__",
@@ -323,7 +349,7 @@ constructor(limit: number, providerConfig: ProviderConfig, aiProvider: AIProvide
     }
 
     fs.writeFileSync(this.cachePath, JSON.stringify(this.cache, null, 2))
-    logging("Chart config saved to cache.")
+    output.debug("Chart config saved to cache.")
     return chartConfig
   }
 

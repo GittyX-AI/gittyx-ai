@@ -15,13 +15,57 @@
 import simpleGit from 'simple-git';
 import fs from 'fs';
 import path from 'path';
-import { logging } from './logging';
+import { output } from './output';
 
 const git = simpleGit();
 const outputPath = path.resolve(process.cwd(), '.git/gittyx.json');
 
-export async function getCommitsWithDiffs(limit = 200) {
-  logging(`Fetching latest ${limit} commits with diffs...`);
+/**
+ * Validates that the current directory is a git repository
+ * Throws an error with a clean message if not a git repo
+ */
+export async function validateGitRepo(): Promise<void> {
+  try {
+    // Try to get the git status to verify we're in a git repo
+    await git.status();
+  } catch (err) {
+    throw new Error('Not a git repository. Please run this command from within a git repository.');
+  }
+}
+
+/**
+ * Checks if the repository has any tags
+ * Returns true if tags exist, false otherwise
+ */
+export async function hasRepositoryTags(): Promise<boolean> {
+  try {
+    const tags = await git.tags();
+    return tags.all && tags.all.length > 0;
+  } catch (err) {
+    output.debug(`Error checking tags: ${err}`);
+    return false;
+  }
+}
+
+/**
+ * Fetches the latest commits with their diffs
+ * Also validates repo and checks for tags
+ */
+export async function getCommitsWithDiffs(limit = 200): Promise<void> {
+  // First validate that we're in a git repo
+  try {
+    await validateGitRepo();
+  } catch (err) {
+    throw new Error(err instanceof Error ? err.message : String(err));
+  }
+
+  // Check if repository has tags and warn if not
+  const hasTags = await hasRepositoryTags();
+  if (!hasTags) {
+    output.warn('No tags found in repository. The compareEpochs feature requires tags to work properly.');
+  }
+
+  output.debug(`Fetching latest ${limit} commits with diffs...`);
   try {
     // Read existing commits if file exists
     let existingCommits = [];
@@ -40,7 +84,7 @@ export async function getCommitsWithDiffs(limit = 200) {
     const newCommits = log.all.filter(c => !existingHashes.has(c.hash));
 
     if (newCommits.length === 0) {
-      logging('No new commits to add.');
+      output.debug('No new commits to add.');
       return;
     }
 
@@ -63,9 +107,9 @@ export async function getCommitsWithDiffs(limit = 200) {
 
     // Save the updated commits list back to the file
     await fs.promises.writeFile(outputPath, JSON.stringify(updatedCommits, null, 2));
-    logging(`Added ${commitsWithDiffs.length} new commits to ${outputPath}`);
+    output.debug(`Added ${commitsWithDiffs.length} new commits to ${outputPath}`);
 
   } catch (err) {
-    logging(`Error fetching commits with diffs: ${err}`, "error");
+    throw new Error(`Error fetching commits with diffs: ${err}`);
   }
 }

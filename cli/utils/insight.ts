@@ -14,9 +14,12 @@
 
 import fs from 'fs';
 import path from 'path';
-import { logging } from './logging';
+import { output } from './output';
 const cachePath = path.resolve(process.cwd(), '.git/gittyx.json');
 
+/**
+ * Loads commits cache from .git/gittyx.json
+ */
 function loadCache(): any[] {
     if (!fs.existsSync(cachePath)) return [];
 
@@ -26,7 +29,7 @@ function loadCache(): any[] {
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
-        logging(`Could not parse cache file:${e}`, "warn");
+        output.warn(`Could not parse cache file: ${e}`);
         return [];
     }
 }

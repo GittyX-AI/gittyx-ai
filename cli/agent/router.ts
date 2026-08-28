@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { logging } from "../utils/logging";
+import { output } from "../utils/output";
 import { QueryClassification, ToolInput } from "./types";
 import { getTrackedFiles, tools } from "./tools";
 import { AIProvider } from "../providers/ai-provider";
@@ -28,10 +28,14 @@ export class AgentRouter {
 
         if (providerConfig.model) {
             this.model_name = providerConfig.model;
-            logging(`AgentRouter - Using model: ${this.model_name}`);
+            output.debug(`AgentRouter - Using model: ${this.model_name}`);
         }
     }
 
+    /**
+     * Extracts JSON from text responses
+     * Handles multiple formats: code blocks, plain JSON
+     */
     extractJsonFromText(text: string): string | null {
         // 1. Handle ```json ... ``` blocks (Gemini)
         const codeBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/i);
@@ -87,7 +91,7 @@ Respond in JSON:
             json.args = { file: filePath };
 
         }
-        logging(`AgentRouter - Decision: ${JSON.stringify(json)}`, "debug");
+        output.debug(`AgentRouter - Decision: ${JSON.stringify(json)}`);
 
         return json;
     }

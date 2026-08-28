@@ -16,7 +16,7 @@ import simpleGit from 'simple-git';
 const git = simpleGit();
 
 import { Tool, ToolInput } from './types';
-import { logging } from '../utils/logging';
+import { output } from '../utils/output';
 import { getCommits } from '../utils/insight';
 
 export const getFirstCommit: Tool = {
@@ -86,7 +86,7 @@ export const getCommitByKeyword: Tool = {
     async run({ keyword }: ToolInput) {
         const log = await git.log();
         const matches = log.all.filter(c => c.message.includes(keyword));
-        logging(`Found ${matches.length} commits with keyword: ${keyword}`, "debug");
+        output.debug(`Found ${matches.length} commits with keyword: ${keyword}`);
         if (!matches.length) return `No commits found with keyword: ${keyword}`;
         return matches.map(c => `- ${c.date} ${c.hash.slice(0, 7)}: ${c.message}`).join('\n');
     }
@@ -122,7 +122,7 @@ export const summarizeFileEvolution: Tool = {
             file = file.slice(1);
         }
 
-        logging(`Fetching changes for file: ${file}`, "debug");
+        output.debug(`Fetching changes for file: ${file}`);
 
         // Use raw git log to avoid argument issues
         let logOutput: string;
@@ -135,12 +135,12 @@ export const summarizeFileEvolution: Tool = {
                 file
             ]);
         } catch (error) {
-            logging(`Git log failed for file: ${file}`, "error");
+            output.error(`Git log failed for file: ${file}`);
             return `Failed to get git log for ${file}`;
         }
 
         if (!logOutput.trim()) {
-            logging(`No changes found for file: ${file}`, "error");
+            output.error(`No changes found for file: ${file}`);
             return `No changes found for file: ${file}`;
         }
 
@@ -161,7 +161,7 @@ export const summarizeFileEvolution: Tool = {
             try {
                 diff = await git.diff([`${older}..${newer}`, '--', file]);
             } catch (error) {
-                logging(`Failed to get diff between ${older} and ${newer}`, "error");
+                output.error(`Failed to get diff between ${older} and ${newer}`);
                 continue;
             }
 
@@ -174,7 +174,7 @@ export const summarizeFileEvolution: Tool = {
             summary += `Diff:\n${diff.trim()}\n`;
         }
 
-        logging(summary, "debug");
+        output.debug(summary);
         return summary;
     }
 };
@@ -208,7 +208,7 @@ export const summarizeRepo: Tool = {
         const commitsSummaries = getCommits(limit).map(c => `- ${c.date} ${c.hash.slice(0, 7)}: ${c.message}. ${c.summary}`).join('\n');
         const summary = `Repository Summary:\n\n${firstCommit}\n\n${lastCommit}\n\n${contributors}\n\n${commitStats}\n\nCommits:\n${commitsSummaries}`;
 
-        logging(summary, "debug");
+        output.debug(summary);
         return summary;
     }
 };

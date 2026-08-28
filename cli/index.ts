@@ -38,6 +38,8 @@ program
   .description("Analyze repository and start dashboard")
   .option("-l, --limit <number>", "Number of commits", parseLimit, 200)
   .option("-m, --mode <string>", "Mode override: online or local")
+  .option("-v, --verbose", "Enable verbose logging with debug information")
+  .option("-q, --quiet", "Suppress all output except final dashboard URL")
   .action(async (options) => {
     if (options.limit < 1) {
       console.error("Error: --limit must be a positive number.");
@@ -71,6 +73,8 @@ program
       online: config.analyze.defaults.online,
       local: config.analyze.defaults.local,
       port: config.analyze.defaults.port,
+      verbose: options.verbose || false,
+      quiet: options.quiet || false
     });
   });
 

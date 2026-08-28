@@ -14,10 +14,13 @@
 
 import path from "path";
 import fs from "fs";
-import { logging } from "../utils/logging";
+import { output } from "../utils/output";
 
 export const VECTOR_STORE_PATH = path.resolve(process.cwd(), '.git/gittyx_vectors.json');
 
+/**
+ * Represents a single vector entry with embedding and metadata
+ */
 export type VectorEntry = {
   id: string;
   embedding: number[];
@@ -32,16 +35,23 @@ export type VectorEntry = {
   };
 };
 
+/**
+ * Local vector store for semantic search
+ * Stores embeddings as JSON for fast retrieval without external dependencies
+ */
 export class LocalVectorStore {
   private modelKey: string;
   private vectors: VectorEntry[] = [];
 
   constructor(embeddingModel: string) {
     this.modelKey = embeddingModel;
-    logging(`Using vector store: ${VECTOR_STORE_PATH} (${this.modelKey})`);
+    output.debug(`Using vector store: ${VECTOR_STORE_PATH} (${this.modelKey})`);
     this.load();
   }
 
+  /**
+   * Load vectors from disk indexed by model
+   */
   load() {
     if (fs.existsSync(VECTOR_STORE_PATH)) {
       try {
@@ -54,6 +64,9 @@ export class LocalVectorStore {
     }
   }
 
+  /**
+   * Save vectors to disk (indexed by model key)
+   */
   save() {
     let allData = {};
     if (fs.existsSync(VECTOR_STORE_PATH)) {
